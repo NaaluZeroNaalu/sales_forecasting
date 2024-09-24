@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload and Forecast Book Sales</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/0.4.1/html2canvas.min.js"></script>
+    <style>
+        body.dark-mode {
+            background-color: #343a40;
+            color: white;
+        }
+        .dark-mode .form-control {
+            background-color: #495057;
+            color: white;
+        }
+        .dark-mode .alert {
+            background-color: #dc3545;
+            color: white;
+        }
+        .dark-mode .btn-primary {
+            background-color: #007bff;
+            border-color: #007bff;
+        }
+        .dark-mode .btn-success {
+            background-color: #28a745;
+            border-color: #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Upload CSV and Forecast Sales</h1>
+        <div class="form-group">
+            <label for="themeToggle">Toggle Dark/Light Mode:</label>
+            <select id="themeToggle" class="form-control" onchange="toggleTheme()">
+                <option value="light">Light Mode</option>
+                <option value="dark">Dark Mode</option>
+            </select>
+        </div>
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit" class="btn btn-primary">Upload and Forecast</button>
+        </form>
+
+        {% if plot_data %}
+            <h2>Sales Forecast Comparison</h2>
+
+     
+            <h3>Historical vs Forecasted Sales</h3>
+            <canvas id="comparisonChart"></canvas>
+
+ 
+            <h3>Historical Sales</h3>
+            <div class="form-group">
+                <label for="historicalMonthSelect">Select Month:</label>
+                <select id="historicalMonthSelect" class="form-control" onchange="updateHistoricalChart()">
+                    <option value="all">All Months</option>
+                    {% for month in plot_data.months %}
+                        <option value="{{ month }}">{{ month }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <canvas id="historicalSalesChart"></canvas>
+
+    
+            <h3>Forecasted Sales</h3>
+            <div class="form-group">
+                <label for="forecastedMonthSelect">Select Month:</label>
+                <select id="forecastedMonthSelect" class="form-control" onchange="updateForecastedChart()">
+                    <option value="all">All Months</option>
+                    {% for month in plot_data.months %}
+                        <option value="{{ month }}">{{ month }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <canvas id="forecastedSalesChart"></canvas>
+
+            <script>
+            
+                function toggleTheme() {
+                    const selectedTheme = document.getElementById('themeToggle').value;
+                    if (selectedTheme === 'dark') {
+                        document.body.classList.add('dark-mode');
+                    } else {
+                        document.body.classList.remove('dark-mode');
+                    }
+                }
+
+          
+                const historicalData = {{ plot_data.historical_sales|safe }};
+                const forecastedData = {{ plot_data.forecasted_sales|safe }};
+
+                const comparisonCtx = document.getElementById('comparisonChart').getContext('2d');
+                const comparisonChart = new Chart(comparisonCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: {{ plot_data.months|safe }},
+                        datasets: [
+                            {
+                                label: 'Historical Sales',
+                                data: historicalData,
+                                backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Forecasted Sales',
+                                data: forecastedData,
+                                backgroundColor: 'rgba(135, 206, 250, 0.6)',
+                                borderColor: 'rgba(135, 206, 250, 1)',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+
+            
+                const historicalCtx = document.getElementById('historicalSalesChart').getContext('2d');
+                let historicalSalesChart = new Chart(historicalCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: {{ plot_data.months|safe }},
+                        datasets: [{
+                            label: 'Historical Sales',
+                            data: historicalData,
+                            backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+
+                // Forecasted Sales Chart
+                const forecastedCtx = document.getElementById('forecastedSalesChart').getContext('2d');
+                let forecastedSalesChart = new Chart(forecastedCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: {{ plot_data.months|safe }},
+                        datasets: [{
+                            label: 'Forecasted Sales',
+                            data: forecastedData,
+                            backgroundColor: 'rgba(135, 206, 250, 0.6)',
+                            borderColor: 'rgba(135, 206, 250, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+
+                const addValueLabels = (chart) => {
+                    chart.data.datasets.forEach((dataset, datasetIndex) => {
+                        const meta = chart.getDatasetMeta(datasetIndex);
+                        meta.data.forEach((bar, index) => {
+                            const value = dataset.data[index];
+                            const ctx = chart.ctx;
+                            ctx.fillStyle = 'black';
+                            ctx.fillText(value, bar.x, bar.y - 5);
+                        });
+                    });
+                };
+
+                comparisonChart.update();
+                addValueLabels(comparisonChart);
+                historicalSalesChart.update();
+                addValueLabels(historicalSalesChart);
+                forecastedSalesChart.update();
+                addValueLabels(forecastedSalesChart);
+
+        
+                function updateHistoricalChart() {
+                    const selectedMonth = document.getElementById('historicalMonthSelect').value;
+                    const filteredData = selectedMonth === 'all' ? historicalData : [historicalData[{{ plot_data.months|safe }}.indexOf(selectedMonth)]];
+                    
+                    historicalSalesChart.data.datasets[0].data = filteredData;
+                    historicalSalesChart.data.labels = selectedMonth === 'all' ? {{ plot_data.months|safe }} : [selectedMonth];
+                    historicalSalesChart.update();
+                }
+
+                function updateForecastedChart() {
+                    const selectedMonth = document.getElementById('forecastedMonthSelect').value;
+                    const filteredData = selectedMonth === 'all' ? forecastedData : [forecastedData[{{ plot_data.months|safe }}.indexOf(selectedMonth)]];
+                    
+                    forecastedSalesChart.data.datasets[0].data = filteredData;
+                    forecastedSalesChart.data.labels = selectedMonth === 'all' ? {{ plot_data.months|safe }} : [selectedMonth];
+                    forecastedSalesChart.update();
+                }
+
+                async function exportPDF() {
+                    const { jsPDF } = window.jspdf;
+
+                    const pdf = new jsPDF();
+
+                    const comparisonImgData = document.getElementById('comparisonChart').toDataURL('image/png');
+                    pdf.addImage(comparisonImgData, 'PNG', 10, 10, 180, 90); 
+
+                  
+                    const historicalImgData = document.getElementById('historicalSalesChart').toDataURL('image/png');
+                    pdf.addImage(historicalImgData, 'PNG', 10, 110, 180, 90); 
+
+                  
+                    const forecastedImgData = document.getElementById('forecastedSalesChart').toDataURL('image/png');
+                    pdf.addImage(forecastedImgData, 'PNG', 10, 210, 180, 90); 
+
+                  
+                    pdf.setFontSize(12);
+                    pdf.text(`Highest Sales Month: {{ highest_sales_month }} ({{ highest_sales_value }})`, 10, 310);
+                    pdf.text(`Lowest Sales Month: {{ lowest_sales_month }} ({{ lowest_sales_value }})`, 10, 320);
+
+                  
+                    pdf.save('sales_forecast.pdf');
+                }
+            </script>
+
+            <div class="mt-4">
+                <h3>Sales Summary</h3>
+                <p><strong>Highest Sales Month:</strong> {{ highest_sales_month }} ({{ highest_sales_value }})</p>
+                <p><strong>Lowest Sales Month:</strong> {{ lowest_sales_month }} ({{ lowest_sales_value }})</p>
+                <button class="btn btn-success" onclick="exportPDF()">Export as PDF</button>
+            </div>
+        {% endif %}
+
+        {% if error_message %}
+            <div class="alert alert-danger">{{ error_message }}</div>
+        {% endif %}
+    </div>
+</body>
+</html>
